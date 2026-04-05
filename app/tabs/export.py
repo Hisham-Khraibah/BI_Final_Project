@@ -1,9 +1,9 @@
 # -----------------------------------------------------------------------------
 # EXPORT TAB
 # -----------------------------------------------------------------------------
-"""
+'''
 Streamlit UI for exporting transaction data to CSV.
-"""
+'''
 from __future__ import annotations
 import pandas as pd
 import streamlit as st
@@ -15,76 +15,81 @@ from app.core.helpers import get_now_local, safe_float
 # DATA PREPARATION
 # -----------------------------------------------------------------------------
 def prepare_export_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """Prepare and clean the dataframe for CSV export."""
+    '''Prepare and clean the dataframe for CSV export.'''
     try:
         if df.empty:
             return pd.DataFrame()
 
-        df_export = df.sort_values(["tx_date", "id"]).reset_index(drop=True)
+        export_df = df.sort_values(['tx_date', 'id']).reset_index(drop=True)
 
-        if "created_at" in df_export.columns:
-            created_dt = pd.to_datetime(df_export["created_at"], errors="coerce")
+        if 'created_at' in export_df.columns:
+            created_dt = pd.to_datetime(export_df['created_at'], errors='coerce')
 
-            df_export["created_date"] = created_dt.apply(
-                lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else ""
+            export_df['created_date'] = created_dt.apply(
+                lambda value: value.strftime('%Y-%m-%d') if pd.notnull(value) else ''
             )
-            df_export["created_time"] = created_dt.apply(
-                lambda x: x.strftime("%I:%M:%S %p") if pd.notnull(x) else ""
+            export_df['created_time'] = created_dt.apply(
+                lambda value: value.strftime('%I:%M:%S %p') if pd.notnull(value) else ''
             )
 
-            df_export = df_export.drop(columns=["created_at"])
+            export_df = export_df.drop(columns=['created_at'])
 
-        if "notes" in df_export.columns:
-            df_export = df_export.drop(columns=["notes"])
+        if 'notes' in export_df.columns:
+            export_df = export_df.drop(columns=['notes'])
 
-        if "source" in df_export.columns:
-            df_export = df_export.drop(columns=["source"])
+        if 'source' in export_df.columns:
+            export_df = export_df.drop(columns=['source'])
 
-        if "id" in df_export.columns:
-            df_export = df_export.drop(columns=["id"])
+        if 'id' in export_df.columns:
+            export_df = export_df.drop(columns=['id'])
 
-        df_export.insert(0, "excel_id", df_export.index + 1)
+        export_df.insert(0, 'excel_id', export_df.index + 1)
 
-        df_export = df_export.rename(
+        export_df = export_df.rename(
             columns={
-                "excel_id": "ID",
-                "tx_date": "Transaction Date",
-                "merchant": "Vendor",
-                "amount": "Amount",
-                "category": "Category",
-                "note": "Description",
-                "created_date": "Date of creation",
-                "created_time": "Time of creation",
+                'excel_id': 'ID',
+                'tx_date': 'Transaction Date',
+                'merchant': 'Vendor',
+                'amount': 'Amount',
+                'category': 'Category',
+                'note': 'Description',
+                'created_date': 'Date of creation',
+                'created_time': 'Time of creation',
             }
         )
 
         export_columns = [
-            "ID",
-            "Transaction Date",
-            "Vendor",
-            "Amount",
-            "Category",
-            "Description",
-            "Date of creation",
-            "Time of creation",
+            'ID',
+            'Transaction Date',
+            'Vendor',
+            'Amount',
+            'Category',
+            'Description',
+            'Date of creation',
+            'Time of creation',
         ]
 
-        df_export = df_export[
-            [col for col in export_columns if col in df_export.columns]
+        export_df = export_df[
+            [column for column in export_columns if column in export_df.columns]
         ]
 
-        if "Transaction Date" in df_export.columns:
-            tx_series = pd.to_datetime(df_export["Transaction Date"], errors="coerce")
-            df_export["Transaction Date"] = tx_series.apply(
-                lambda x: x.strftime("%Y-%m-%d") if pd.notnull(x) else ""
+        if 'Transaction Date' in export_df.columns:
+            tx_series = pd.to_datetime(
+                export_df['Transaction Date'],
+                errors='coerce',
+            )
+            export_df['Transaction Date'] = tx_series.apply(
+                lambda value: value.strftime('%Y-%m-%d')
+                if pd.notnull(value)
+                else ''
             )
 
-        if "Amount" in df_export.columns:
-            df_export["Amount"] = df_export["Amount"].map(
-                lambda x: f"${safe_float(x, 0.0):,.2f}"
+        if 'Amount' in export_df.columns:
+            export_df['Amount'] = export_df['Amount'].map(
+                lambda value: f'${safe_float(value, 0.0):,.2f}'
             )
 
-        return df_export
+        return export_df
 
     except Exception:
         return pd.DataFrame()
@@ -93,29 +98,29 @@ def prepare_export_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 # MAIN RENDERER
 # -----------------------------------------------------------------------------
 def render_export_tab() -> None:
-    """Render the Export tab UI."""
+    '''Render the Export tab UI.'''
     try:
-        st.subheader("CSV Export")
-        st.caption("Download your transaction history as a CSV file")
-        
+        st.subheader('CSV Export')
+        st.caption('Download your transaction history as a CSV file')
+
         df = fetch_df(DB_PATH)
 
         if df.empty:
-            st.info("No data to export.")
+            st.info('No data to export.')
             return
 
-        df_export = prepare_export_dataframe(df)
+        export_df = prepare_export_dataframe(df)
 
-        if df_export.empty:
-            st.warning("Export data could not be prepared.")
+        if export_df.empty:
+            st.warning('Export data could not be prepared.')
             return
 
         st.download_button(
-            label="Download CSV",
-            data=df_export.to_csv(index=False).encode("utf-8"),
-            file_name=f"Expenses_{get_now_local().strftime('%Y-%m-%d')}.csv",
-            mime="text/csv",
+            label='Download CSV',
+            data=export_df.to_csv(index=False).encode('utf-8'),
+            file_name=f'Expenses_{get_now_local().strftime("%Y-%m-%d")}.csv',
+            mime='text/csv',
         )
 
     except Exception as error:
-        st.error(f"Error in Export tab: {error}")
+        st.error(f'Error in Export tab: {error}')

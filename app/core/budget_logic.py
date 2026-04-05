@@ -1,49 +1,52 @@
 # -----------------------------------------------------------------------------
 # BUDGET LOGIC MODULE
 # -----------------------------------------------------------------------------
-"""
+'''
 Business logic for budget settings, calculations, alerts, and progress tracking.
-"""
+'''
+from __future__ import annotations
 import json
 import os
-from typing import Optional
+from typing import Any, Optional
 import pandas as pd
 from app.core.helpers import safe_float
 
 # -----------------------------------------------------------------------------
-# JSON HELPERS
+# JSON READ / WRITE
 # -----------------------------------------------------------------------------
-def safe_read_json(path: str, default_value):
-    """Safely read a JSON file."""
+def safe_read_json(path: str, default_value: Any) -> Any:
+    '''Safely read a JSON file.'''
     try:
         if not os.path.exists(path):
             return default_value
 
-        with open(path, "r", encoding="utf-8") as file:
+        with open(path, 'r', encoding='utf-8') as file:
             return json.load(file)
 
     except Exception:
         return default_value
 
-def safe_write_json(path: str, data) -> bool:
-    """Safely write a JSON file."""
+def safe_write_json(path: str, data: Any) -> bool:
+    '''Safely write a JSON file.'''
     try:
-        with open(path, "w", encoding="utf-8") as file:
+        with open(path, 'w', encoding='utf-8') as file:
             json.dump(data, file, indent=2)
+
         return True
+
     except Exception:
         return False
 
 # -----------------------------------------------------------------------------
-# DATA HELPERS
+# DATA CLEANING
 # -----------------------------------------------------------------------------
 def get_clean_non_negative_amounts(df: pd.DataFrame) -> pd.Series:
-    """Return a numeric Series of non-negative amounts."""
+    '''Return a numeric Series of non-negative amounts.'''
     try:
-        if df.empty or "amount" not in df.columns:
+        if df.empty or 'amount' not in df.columns:
             return pd.Series(dtype=float)
 
-        amounts = pd.to_numeric(df["amount"], errors="coerce").dropna()
+        amounts = pd.to_numeric(df['amount'], errors='coerce').dropna()
         return amounts[amounts >= 0]
 
     except Exception:
@@ -56,7 +59,7 @@ def get_current_month_df(
     df: pd.DataFrame,
     current_ts: Optional[pd.Timestamp] = None,
 ) -> pd.DataFrame:
-    """Return rows that belong to the current month."""
+    '''Return rows that belong to the current month.'''
     try:
         if df.empty:
             return df.copy()
@@ -65,8 +68,8 @@ def get_current_month_df(
             current_ts = pd.Timestamp.now()
 
         return df[
-            (df["tx_date"].dt.year == current_ts.year)
-            & (df["tx_date"].dt.month == current_ts.month)
+            (df['tx_date'].dt.year == current_ts.year)
+            & (df['tx_date'].dt.month == current_ts.month)
         ].copy()
 
     except Exception:
@@ -76,47 +79,54 @@ def get_current_month_df(
 # BUDGET SETTINGS
 # -----------------------------------------------------------------------------
 def load_budget_settings(budget_path: str) -> dict:
-    """
+    '''
     Load budget settings from JSON.
 
     Returns:
         {
-            "monthly_budget": float,
-            "category_budgets": dict,
+            'monthly_budget': float,
+            'category_budgets': dict,
         }
-    """
+    '''
     try:
         default_data = {
-            "monthly_budget": 0.0,
-            "category_budgets": {},
+            'monthly_budget': 0.0,
+            'category_budgets': {},
         }
 
         data = safe_read_json(budget_path, default_data)
 
-        if "monthly_budget" not in data:
-            data["monthly_budget"] = 0.0
+        if not isinstance(data, dict):
+            return default_data
 
-        if "category_budgets" not in data:
-            data["category_budgets"] = {}
+        if 'monthly_budget' not in data:
+            data['monthly_budget'] = 0.0
+
+        if 'category_budgets' not in data:
+            data['category_budgets'] = {}
 
         return data
 
     except Exception:
         return {
-            "monthly_budget": 0.0,
-            "category_budgets": {},
+            'monthly_budget': 0.0,
+            'category_budgets': {},
         }
 
 def save_budget_settings(
     budget_path: str,
-    monthly_budget,
+    monthly_budget: Any,
     category_budgets: dict,
 ) -> bool:
-    """Save budget settings to JSON."""
+    '''Save budget settings to JSON.'''
     try:
         data = {
-            "monthly_budget": safe_float(monthly_budget),
-            "category_budgets": category_budgets,
+            'monthly_budget': safe_float(monthly_budget),
+            'category_budgets': {
+                str(key): safe_float(value)
+                for key, value in category_budgets.items()
+                if safe_float(value) > 0
+            },
         }
         return safe_write_json(budget_path, data)
 
@@ -124,45 +134,48 @@ def save_budget_settings(
         return False
 
 # -----------------------------------------------------------------------------
-# STATUS HELPERS
+# BUDGET PROGRESS & STATUS
 # -----------------------------------------------------------------------------
 def get_budget_status_label(usage_pct: float) -> str:
-    """Convert budget usage percentage into a status label."""
+    '''Convert budget usage percentage into a status label.'''
     try:
         if usage_pct > 100:
-            return "Over Budget"
+            return 'Over Budget'
+
         if usage_pct >= 80:
-            return "Warning"
-        return "On Track"
+            return 'Warning'
+
+        return 'On Track'
+
     except Exception:
-        return "Unknown"
+        return 'Unknown'
 
 def calculate_budget_progress(spent: float, budget: float) -> dict:
-    """
+    '''
     Calculate budget progress values.
 
     Returns:
         {
-            "spent": float,
-            "budget": float,
-            "usage_pct": float,
-            "progress_value": float,
-            "remaining": float,
-            "status": str,
+            'spent': float,
+            'budget': float,
+            'usage_pct': float,
+            'progress_value': float,
+            'remaining': float,
+            'status': str,
         }
-    """
+    '''
     try:
         spent = safe_float(spent, 0.0)
         budget = safe_float(budget, 0.0)
 
         if budget <= 0:
             return {
-                "spent": spent,
-                "budget": budget,
-                "usage_pct": 0.0,
-                "progress_value": 0.0,
-                "remaining": 0.0,
-                "status": "No Budget",
+                'spent': spent,
+                'budget': budget,
+                'usage_pct': 0.0,
+                'progress_value': 0.0,
+                'remaining': 0.0,
+                'status': 'No Budget',
             }
 
         usage_pct = (spent / budget) * 100
@@ -171,22 +184,22 @@ def calculate_budget_progress(spent: float, budget: float) -> dict:
         status = get_budget_status_label(usage_pct)
 
         return {
-            "spent": spent,
-            "budget": budget,
-            "usage_pct": usage_pct,
-            "progress_value": progress_value,
-            "remaining": remaining,
-            "status": status,
+            'spent': spent,
+            'budget': budget,
+            'usage_pct': usage_pct,
+            'progress_value': progress_value,
+            'remaining': remaining,
+            'status': status,
         }
 
     except Exception:
         return {
-            "spent": 0.0,
-            "budget": 0.0,
-            "usage_pct": 0.0,
-            "progress_value": 0.0,
-            "remaining": 0.0,
-            "status": "Unknown",
+            'spent': 0.0,
+            'budget': 0.0,
+            'usage_pct': 0.0,
+            'progress_value': 0.0,
+            'remaining': 0.0,
+            'status': 'Unknown',
         }
 
 # -----------------------------------------------------------------------------
@@ -197,29 +210,29 @@ def calculate_kpis(
     settings: dict,
     current_ts: Optional[pd.Timestamp] = None,
 ) -> dict:
-    """Calculate current-month KPI values for budget monitoring."""
+    '''Calculate current-month KPI values for budget monitoring.'''
     try:
         current_month_df = get_current_month_df(df, current_ts)
-        monthly_budget = float(settings.get("monthly_budget", 0.0))
+        monthly_budget = float(settings.get('monthly_budget', 0.0))
 
         if current_month_df.empty:
             return {
-                "total_spending": 0.0,
-                "monthly_budget": monthly_budget,
-                "remaining_budget": monthly_budget,
-                "usage_ratio": 0.0,
-                "usage_percent": 0.0,
-                "transaction_count": 0,
-                "average_spend": 0.0,
+                'total_spending': 0.0,
+                'monthly_budget': monthly_budget,
+                'remaining_budget': monthly_budget,
+                'usage_ratio': 0.0,
+                'usage_percent': 0.0,
+                'transaction_count': 0,
+                'average_spend': 0.0,
             }
 
         amounts = get_clean_non_negative_amounts(current_month_df)
-
         total_spending = float(amounts.sum())
         transaction_count = int(len(amounts))
         average_spend = (
             float(total_spending / transaction_count)
-            if transaction_count > 0 else 0.0
+            if transaction_count > 0
+            else 0.0
         )
         remaining_budget = (
             monthly_budget - total_spending if monthly_budget > 0 else 0.0
@@ -229,24 +242,24 @@ def calculate_kpis(
         )
 
         return {
-            "total_spending": total_spending,
-            "monthly_budget": monthly_budget,
-            "remaining_budget": remaining_budget,
-            "usage_ratio": usage_ratio,
-            "usage_percent": usage_ratio * 100,
-            "transaction_count": transaction_count,
-            "average_spend": average_spend,
+            'total_spending': total_spending,
+            'monthly_budget': monthly_budget,
+            'remaining_budget': remaining_budget,
+            'usage_ratio': usage_ratio,
+            'usage_percent': usage_ratio * 100,
+            'transaction_count': transaction_count,
+            'average_spend': average_spend,
         }
 
     except Exception:
         return {
-            "total_spending": 0.0,
-            "monthly_budget": 0.0,
-            "remaining_budget": 0.0,
-            "usage_ratio": 0.0,
-            "usage_percent": 0.0,
-            "transaction_count": 0,
-            "average_spend": 0.0,
+            'total_spending': 0.0,
+            'monthly_budget': 0.0,
+            'remaining_budget': 0.0,
+            'usage_ratio': 0.0,
+            'usage_percent': 0.0,
+            'transaction_count': 0,
+            'average_spend': 0.0,
         }
 
 # -----------------------------------------------------------------------------
@@ -256,166 +269,96 @@ def build_budget_alerts(
     df: pd.DataFrame,
     settings: dict,
     current_ts: Optional[pd.Timestamp] = None,
-) -> list:
-    """
+) -> list[dict]:
+    '''
     Build budget alerts for the current month.
 
     Returns:
         List of dicts:
         {
-            "type": "error" | "warning" | "success",
-            "title": str,
-            "message": str,
+            'type': 'error' | 'warning' | 'success',
+            'title': str,
+            'message': str,
         }
-    """
+    '''
     try:
-        alerts = []
+        alerts: list[dict] = []
         current_month_df = get_current_month_df(df, current_ts)
 
         amounts = get_clean_non_negative_amounts(current_month_df)
         total_spent = float(amounts.sum())
-        monthly_budget = float(settings.get("monthly_budget", 0.0))
+        monthly_budget = float(settings.get('monthly_budget', 0.0))
 
         if monthly_budget > 0:
             usage_pct = (total_spent / monthly_budget) * 100
 
             if usage_pct > 100:
-                alerts.append({
-                    "type": "error",
-                    "title": "Overall Monthly Budget Exceeded",
-                    "message": (
-                        f"You spent ${total_spent:,.2f} out of "
-                        f"${monthly_budget:,.2f} ({usage_pct:.2f}%)."
-                    ),
-                })
+                alert_type = 'error'
+                title = 'Overall Monthly Budget Exceeded'
             elif usage_pct >= 80:
-                alerts.append({
-                    "type": "warning",
-                    "title": "Overall Monthly Budget Warning",
-                    "message": (
-                        f"You spent ${total_spent:,.2f} out of "
-                        f"${monthly_budget:,.2f} ({usage_pct:.2f}%)."
-                    ),
-                })
+                alert_type = 'warning'
+                title = 'Overall Monthly Budget Warning'
             else:
-                alerts.append({
-                    "type": "success",
-                    "title": "Overall Monthly Budget Status",
-                    "message": (
-                        f"You spent ${total_spent:,.2f} out of "
-                        f"${monthly_budget:,.2f} ({usage_pct:.2f}%)."
+                alert_type = 'success'
+                title = 'Overall Monthly Budget Status'
+
+            alerts.append(
+                {
+                    'type': alert_type,
+                    'title': title,
+                    'message': (
+                        f'You spent ${total_spent:,.2f} out of '
+                        f'${monthly_budget:,.2f} ({usage_pct:.2f}%).'
                     ),
-                })
+                }
+            )
 
-        category_budgets = settings.get("category_budgets", {})
+        category_budgets = settings.get('category_budgets', {})
 
-        if not current_month_df.empty and category_budgets:
-            working_df = current_month_df.copy()
-            working_df["amount"] = pd.to_numeric(working_df["amount"], errors="coerce")
-            working_df = working_df.dropna(subset=["amount"])
-            working_df = working_df[working_df["amount"] >= 0]
+        if current_month_df.empty or not category_budgets:
+            return alerts
 
-            category_spend = working_df.groupby("category", as_index=False)["amount"].sum()
+        working_df = current_month_df.copy()
+        working_df['amount'] = pd.to_numeric(working_df['amount'], errors='coerce')
+        working_df = working_df.dropna(subset=['amount'])
+        working_df = working_df[working_df['amount'] >= 0]
 
-            for _, row in category_spend.iterrows():
-                category = str(row["category"])
-                spent = float(row["amount"])
-                budget = float(category_budgets.get(category, 0.0))
+        category_spend = (
+            working_df.groupby('category', as_index=False)['amount'].sum()
+        )
 
-                if budget <= 0:
-                    continue
+        for _, row in category_spend.iterrows():
+            category = str(row['category'])
+            spent = float(row['amount'])
+            budget = float(category_budgets.get(category, 0.0))
 
-                usage_pct = (spent / budget) * 100
+            if budget <= 0:
+                continue
 
-                if usage_pct > 100:
-                    alerts.append({
-                        "type": "error",
-                        "title": f"Category Budget Exceeded - {category}",
-                        "message": (
-                            f"You spent ${spent:,.2f} out of "
-                            f"${budget:,.2f} ({usage_pct:.2f}%)."
-                        ),
-                    })
-                elif usage_pct >= 80:
-                    alerts.append({
-                        "type": "warning",
-                        "title": f"Category Budget Warning - {category}",
-                        "message": (
-                            f"You spent ${spent:,.2f} out of "
-                            f"${budget:,.2f} ({usage_pct:.2f}%)."
-                        ),
-                    })
-                else:
-                    alerts.append({
-                        "type": "success",
-                        "title": f"Category Budget Status - {category}",
-                        "message": (
-                            f"You spent ${spent:,.2f} out of "
-                            f"${budget:,.2f} ({usage_pct:.2f}%)."
-                        ),
-                    })
+            usage_pct = (spent / budget) * 100
+
+            if usage_pct > 100:
+                alert_type = 'error'
+                title = f'Category Budget Exceeded - {category}'
+            elif usage_pct >= 80:
+                alert_type = 'warning'
+                title = f'Category Budget Warning - {category}'
+            else:
+                alert_type = 'success'
+                title = f'Category Budget Status - {category}'
+
+            alerts.append(
+                {
+                    'type': alert_type,
+                    'title': title,
+                    'message': (
+                        f'You spent ${spent:,.2f} out of '
+                        f'${budget:,.2f} ({usage_pct:.2f}%).'
+                    ),
+                }
+            )
 
         return alerts
-
-    except Exception:
-        return []
-
-def get_budget_popup_messages(
-    df: pd.DataFrame,
-    settings: dict,
-    current_ts: Optional[pd.Timestamp] = None,
-) -> list:
-    """
-    Build exceeded-budget popup messages.
-
-    Returns:
-        List of dicts:
-        {
-            "title": str,
-            "message": str,
-        }
-    """
-    try:
-        popups = []
-        current_month_df = get_current_month_df(df, current_ts)
-
-        if current_month_df.empty:
-            return popups
-
-        amounts = get_clean_non_negative_amounts(current_month_df)
-        total_spent = float(amounts.sum())
-        monthly_budget = float(settings.get("monthly_budget", 0.0))
-
-        if monthly_budget > 0 and total_spent > monthly_budget:
-            popups.append({
-                "title": "Overall Monthly Budget Exceeded",
-                "message": (
-                    f"You spent ${total_spent:,.2f} out of ${monthly_budget:,.2f}."
-                ),
-            })
-
-        category_budgets = settings.get("category_budgets", {})
-
-        if category_budgets:
-            working_df = current_month_df.copy()
-            working_df["amount"] = pd.to_numeric(working_df["amount"], errors="coerce")
-            working_df = working_df.dropna(subset=["amount"])
-            working_df = working_df[working_df["amount"] >= 0]
-
-            category_spend = working_df.groupby("category", as_index=False)["amount"].sum()
-
-            for _, row in category_spend.iterrows():
-                category = str(row["category"])
-                spent = float(row["amount"])
-                budget = float(category_budgets.get(category, 0.0))
-
-                if budget > 0 and spent > budget:
-                    popups.append({
-                        "title": f"Category Budget Exceeded - {category}",
-                        "message": f"You spent ${spent:,.2f} out of ${budget:,.2f}.",
-                    })
-
-        return popups
 
     except Exception:
         return []
@@ -428,7 +371,7 @@ def build_category_budget_overview(
     settings: dict,
     current_ts: Optional[pd.Timestamp] = None,
 ) -> pd.DataFrame:
-    """Build a category budget overview dataframe for the UI."""
+    '''Build a category budget overview dataframe for the UI.'''
     try:
         current_month_df = get_current_month_df(df, current_ts)
 
@@ -436,11 +379,13 @@ def build_category_budget_overview(
             return pd.DataFrame()
 
         working_df = current_month_df.copy()
-        working_df["amount"] = pd.to_numeric(working_df["amount"], errors="coerce")
-        working_df = working_df.dropna(subset=["amount"])
-        working_df = working_df[working_df["amount"] >= 0]
+        working_df['amount'] = pd.to_numeric(working_df['amount'], errors='coerce')
+        working_df = working_df.dropna(subset=['amount'])
+        working_df = working_df[working_df['amount'] >= 0]
 
-        category_spend = working_df.groupby("category", as_index=False)["amount"].sum()
+        category_spend = (
+            working_df.groupby('category', as_index=False)['amount'].sum()
+        )
 
         if category_spend.empty:
             return pd.DataFrame()
@@ -448,22 +393,24 @@ def build_category_budget_overview(
         rows = []
 
         for _, row in category_spend.iterrows():
-            category = str(row["category"])
-            spent = float(row["amount"])
-            budget = float(settings.get("category_budgets", {}).get(category, 0.0))
+            category = str(row['category'])
+            spent = float(row['amount'])
+            budget = float(settings.get('category_budgets', {}).get(category, 0.0))
 
             usage = (spent / budget * 100) if budget > 0 else 0.0
             remaining = (budget - spent) if budget > 0 else 0.0
-            status = get_budget_status_label(usage) if budget > 0 else "-"
+            status = get_budget_status_label(usage) if budget > 0 else '-'
 
-            rows.append({
-                "Category": category,
-                "Spent": spent,
-                "Budget": budget,
-                "Remaining": remaining if budget > 0 else None,
-                "Usage %": usage if budget > 0 else None,
-                "Status": status,
-            })
+            rows.append(
+                {
+                    'Category': category,
+                    'Spent': spent,
+                    'Budget': budget,
+                    'Remaining': remaining if budget > 0 else None,
+                    'Usage %': usage if budget > 0 else None,
+                    'Status': status,
+                }
+            )
 
         return pd.DataFrame(rows)
 
