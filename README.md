@@ -42,6 +42,7 @@ The Smart Expense Tracker allows users to:
 *   Auto data folder creation
 
 ## Project Structure
+```
 app/
 ├── core/
 │   ├── analytics.py
@@ -72,6 +73,7 @@ app/
 ├── main.py
 ├── README.md
 └── requirements.txt
+```
 
 ## Technologies Used
 *   Streamlit
