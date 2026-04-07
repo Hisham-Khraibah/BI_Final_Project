@@ -9,6 +9,8 @@ import json
 import os
 from typing import Any, Optional
 import pandas as pd
+import streamlit as st
+from app.core.email_utils import send_email
 from app.core.helpers import safe_float
 
 # -----------------------------------------------------------------------------
@@ -96,9 +98,6 @@ def load_budget_settings(budget_path: str) -> dict:
 
         data = safe_read_json(budget_path, default_data)
 
-        if not isinstance(data, dict):
-            return default_data
-
         if 'monthly_budget' not in data:
             data['monthly_budget'] = 0.0
 
@@ -122,11 +121,7 @@ def save_budget_settings(
     try:
         data = {
             'monthly_budget': safe_float(monthly_budget),
-            'category_budgets': {
-                str(key): safe_float(value)
-                for key, value in category_budgets.items()
-                if safe_float(value) > 0
-            },
+            'category_budgets': category_budgets,
         }
         return safe_write_json(budget_path, data)
 
@@ -263,6 +258,67 @@ def calculate_kpis(
         }
 
 # -----------------------------------------------------------------------------
+# EMAIL NOTIFICATION
+# -----------------------------------------------------------------------------
+def send_overall_budget_email(
+    status: str,
+    total_spent: float,
+    monthly_budget: float,
+    usage_pct: float,
+) -> None:
+    '''Send the overall monthly budget email once per session per status.'''
+    try:
+        session_key = f'email_overall_{status.lower()}_sent'
+
+        if session_key in st.session_state:
+            return
+
+        subject = f'Overall Monthly Budget {status}'
+        body = (
+            f'Your overall monthly budget status is now: {status}\n\n'
+            f'Total spent: ${total_spent:,.2f}\n'
+            f'Monthly budget: ${monthly_budget:,.2f}\n'
+            f'Usage: {usage_pct:.2f}%\n'
+        )
+
+        if send_email(subject, body):
+            st.session_state[session_key] = True
+
+    except Exception:
+        pass
+
+def send_category_budget_email(
+    status: str,
+    category: str,
+    spent: float,
+    budget: float,
+    usage_pct: float,
+) -> None:
+    '''Send the category budget email once per session per category and status.'''
+    try:
+        session_key = (
+            f'email_category_{status.lower()}_sent_'
+            f'{category.strip().lower()}'
+        )
+
+        if session_key in st.session_state:
+            return
+
+        subject = f'Category Budget {status} - {category}'
+        body = (
+            f'The budget status for category "{category}" is now: {status}\n\n'
+            f'Total spent: ${spent:,.2f}\n'
+            f'Category budget: ${budget:,.2f}\n'
+            f'Usage: {usage_pct:.2f}%\n'
+        )
+
+        if send_email(subject, body):
+            st.session_state[session_key] = True
+
+    except Exception:
+        pass
+
+# -----------------------------------------------------------------------------
 # ALERTS
 # -----------------------------------------------------------------------------
 def build_budget_alerts(
@@ -294,10 +350,24 @@ def build_budget_alerts(
 
             if usage_pct > 100:
                 alert_type = 'error'
+                status = 'Exceeded'
                 title = 'Overall Monthly Budget Exceeded'
+                send_overall_budget_email(
+                    status=status,
+                    total_spent=total_spent,
+                    monthly_budget=monthly_budget,
+                    usage_pct=usage_pct,
+                )
             elif usage_pct >= 80:
                 alert_type = 'warning'
+                status = 'Warning'
                 title = 'Overall Monthly Budget Warning'
+                send_overall_budget_email(
+                    status=status,
+                    total_spent=total_spent,
+                    monthly_budget=monthly_budget,
+                    usage_pct=usage_pct,
+                )
             else:
                 alert_type = 'success'
                 title = 'Overall Monthly Budget Status'
@@ -339,10 +409,26 @@ def build_budget_alerts(
 
             if usage_pct > 100:
                 alert_type = 'error'
+                status = 'Exceeded'
                 title = f'Category Budget Exceeded - {category}'
+                send_category_budget_email(
+                    status=status,
+                    category=category,
+                    spent=spent,
+                    budget=budget,
+                    usage_pct=usage_pct,
+                )
             elif usage_pct >= 80:
                 alert_type = 'warning'
+                status = 'Warning'
                 title = f'Category Budget Warning - {category}'
+                send_category_budget_email(
+                    status=status,
+                    category=category,
+                    spent=spent,
+                    budget=budget,
+                    usage_pct=usage_pct,
+                )
             else:
                 alert_type = 'success'
                 title = f'Category Budget Status - {category}'
@@ -359,6 +445,75 @@ def build_budget_alerts(
             )
 
         return alerts
+
+    except Exception:
+        return []
+
+def get_budget_popup_messages(
+    df: pd.DataFrame,
+    settings: dict,
+    current_ts: Optional[pd.Timestamp] = None,
+) -> list[dict]:
+    '''
+    Build exceeded-budget popup messages.
+
+    Returns:
+        List of dicts:
+        {
+            'title': str,
+            'message': str,
+        }
+    '''
+    try:
+        popups: list[dict] = []
+        current_month_df = get_current_month_df(df, current_ts)
+
+        if current_month_df.empty:
+            return popups
+
+        amounts = get_clean_non_negative_amounts(current_month_df)
+        total_spent = float(amounts.sum())
+        monthly_budget = float(settings.get('monthly_budget', 0.0))
+
+        if monthly_budget > 0 and total_spent > monthly_budget:
+            popups.append(
+                {
+                    'title': 'Overall Monthly Budget Exceeded',
+                    'message': (
+                        f'You spent ${total_spent:,.2f} '
+                        f'out of ${monthly_budget:,.2f}.'
+                    ),
+                }
+            )
+
+        category_budgets = settings.get('category_budgets', {})
+
+        if not category_budgets:
+            return popups
+
+        working_df = current_month_df.copy()
+        working_df['amount'] = pd.to_numeric(working_df['amount'], errors='coerce')
+        working_df = working_df.dropna(subset=['amount'])
+        working_df = working_df[working_df['amount'] >= 0]
+
+        category_spend = (
+            working_df.groupby('category', as_index=False)['amount'].sum()
+        )
+
+        for _, row in category_spend.iterrows():
+            category = str(row['category'])
+            spent = float(row['amount'])
+            budget = float(category_budgets.get(category, 0.0))
+
+            if budget > 0 and spent > budget:
+                popups.append(
+                    {
+                        'title': f'Category Budget Exceeded - {category}',
+                        'message': f'You spent ${spent:,.2f} out of ${budget:,.2f}.',
+                    }
+                )
+
+        return popups
 
     except Exception:
         return []
